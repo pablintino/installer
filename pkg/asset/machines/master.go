@@ -73,6 +73,7 @@ import (
 type Master struct {
 	UserDataFile           *asset.File
 	MachineConfigFiles     []*asset.File
+	MachineConfigPoolFile  *asset.File
 	MachineFiles           []*asset.File
 	ControlPlaneMachineSet *asset.File
 	IPClaimFiles           []*asset.File
@@ -667,9 +668,21 @@ func (m *Master) Generate(ctx context.Context, dependencies asset.Parents) error
 		}
 	}
 
-	m.MachineConfigFiles, err = machineconfig.Manifests(machineConfigs, "master", directory)
+	m.MachineConfigFiles, err = machineconfig.GenerateMachineConfigFiles(machineConfigs, "master", directory)
 	if err != nil {
 		return errors.Wrap(err, "failed to create MachineConfig manifests for master machines")
+	}
+
+	// Generate the master MCP
+	// For now, generate them only in case an OS Image Stream is given
+	if installConfig.Config.OSImageStream != "" {
+		masterMcp, err := machineconfig.GenerateMachineConfigPool(installConfig.Config, machineconfig.PoolMaster)
+		if err != nil {
+			return errors.Wrap(err, "failed to create master MCP")
+		}
+		mcpFile, err := machineconfig.GenerateMachineConfigPoolFile(masterMcp, "master", directory)
+		m.MachineConfigPoolFile = mcpFile
+
 	}
 
 	m.MachineFiles = make([]*asset.File, len(machines))
@@ -776,6 +789,9 @@ func (m *Master) Files() []*asset.File {
 	if m.UserDataFile != nil {
 		files = append(files, m.UserDataFile)
 	}
+	if m.MachineConfigPoolFile != nil {
+		files = append(files, m.MachineConfigPoolFile)
+	}
 	files = append(files, m.MachineConfigFiles...)
 	// Hosts refer to secrets, so place the secrets before the hosts
 	// to avoid unnecessary reconciliation errors.
@@ -807,10 +823,11 @@ func (m *Master) Load(f asset.FileFetcher) (found bool, err error) {
 	}
 	m.UserDataFile = file
 
-	m.MachineConfigFiles, err = machineconfig.Load(f, "master", directory)
+	m.MachineConfigFiles, err = machineconfig.LoadMachineConfigs(f, machineconfig.PoolMaster, directory)
 	if err != nil {
 		return true, err
 	}
+	m.MachineConfigPoolFile, err = machineconfig.LoadMachineConfigPool(f, machineconfig.PoolMaster, directory)
 
 	var fileList []*asset.File
 
@@ -940,11 +957,15 @@ func IsMachineManifest(file *asset.File) bool {
 	if filename == masterUserDataFileName || filename == workerUserDataFileName || filename == controlPlaneMachineSetFileName {
 		return true
 	}
-	if matched, err := machineconfig.IsManifest(filename); err != nil {
+	if matched, err := machineconfig.IsMachineConfigManifest(filename); err != nil {
 		panic(err)
 	} else if matched {
 		return true
 	}
+	if machineconfig.IsMachineConfigPoolManifest(filename) {
+		return true
+	}
+
 	for _, pattern := range []struct {
 		Pattern string
 		Type    string

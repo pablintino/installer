@@ -284,12 +284,13 @@ func awsSetPreferredInstanceByEdgeZone(ctx context.Context, defaultTypes []strin
 
 // Worker generates the machinesets for `worker` machine pool.
 type Worker struct {
-	UserDataFile       *asset.File
-	MachineConfigFiles []*asset.File
-	MachineSetFiles    []*asset.File
-	MachineFiles       []*asset.File
-	IPClaimFiles       []*asset.File
-	IPAddrFiles        []*asset.File
+	UserDataFile          *asset.File
+	MachineConfigFiles    []*asset.File
+	MachineConfigPoolFile *asset.File
+	MachineSetFiles       []*asset.File
+	MachineFiles          []*asset.File
+	IPClaimFiles          []*asset.File
+	IPAddrFiles           []*asset.File
 }
 
 // Name returns a human friendly name for the Worker Asset.
@@ -796,11 +797,21 @@ func (w *Worker) Generate(ctx context.Context, dependencies asset.Parents) error
 		Data:     data,
 	}
 
-	w.MachineConfigFiles, err = machineconfig.Manifests(machineConfigs, "worker", directory)
+	w.MachineConfigFiles, err = machineconfig.GenerateMachineConfigFiles(machineConfigs, "worker", directory)
 	if err != nil {
 		return errors.Wrap(err, "failed to create MachineConfig manifests for worker machines")
 	}
 
+	// Generate the worker MCP
+	// For now, generate them only in case an OS Image Stream is given
+	if installConfig.Config.OSImageStream != "" {
+		workerMcp, err := machineconfig.GenerateMachineConfigPool(installConfig.Config, machineconfig.PoolWorker)
+		if err != nil {
+			return errors.Wrap(err, "failed to create worker MCP")
+		}
+		mcpFile, err := machineconfig.GenerateMachineConfigPoolFile(workerMcp, "worker", directory)
+		w.MachineConfigPoolFile = mcpFile
+	}
 	w.MachineSetFiles = make([]*asset.File, len(machineSets))
 	padFormat := fmt.Sprintf("%%0%dd", len(fmt.Sprintf("%d", len(machineSets))))
 	for i, machineSet := range machineSets {
@@ -863,6 +874,9 @@ func (w *Worker) Files() []*asset.File {
 	if w.UserDataFile != nil {
 		files = append(files, w.UserDataFile)
 	}
+	if w.MachineConfigPoolFile != nil {
+		files = append(files, w.MachineConfigPoolFile)
+	}
 	files = append(files, w.MachineConfigFiles...)
 	files = append(files, w.MachineSetFiles...)
 	files = append(files, w.MachineFiles...)
@@ -882,10 +896,11 @@ func (w *Worker) Load(f asset.FileFetcher) (found bool, err error) {
 	}
 	w.UserDataFile = file
 
-	w.MachineConfigFiles, err = machineconfig.Load(f, "worker", directory)
+	w.MachineConfigFiles, err = machineconfig.LoadMachineConfigs(f, machineconfig.PoolWorker, directory)
 	if err != nil {
 		return true, err
 	}
+	w.MachineConfigPoolFile, err = machineconfig.LoadMachineConfigPool(f, machineconfig.PoolWorker, directory)
 
 	fileList, err := f.FetchByPattern(filepath.Join(directory, workerMachineSetFileNamePattern))
 	if err != nil {

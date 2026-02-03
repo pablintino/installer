@@ -11,15 +11,16 @@ import (
 )
 
 const (
-	machineConfigFileName = "99_openshift-machineconfig_%s.yaml"
+	machineConfigFileName     = "99_openshift-machineconfig_%s.yaml"
+	machineConfigPoolFileName = "99_openshift-machineconfigpool_%s.yaml"
 )
 
 var (
 	machineConfigFileNamePattern = fmt.Sprintf(machineConfigFileName, "*")
 )
 
-// Manifests creates manifest files containing the MachineConfigs.
-func Manifests(configs []*mcfgv1.MachineConfig, role, directory string) ([]*asset.File, error) {
+// GenerateMachineConfigFiles creates manifest files containing the MachineConfigs.
+func GenerateMachineConfigFiles(configs []*mcfgv1.MachineConfig, role, directory string) ([]*asset.File, error) {
 	var ret []*asset.File
 	for _, c := range configs {
 		if c == nil {
@@ -42,8 +43,20 @@ func Manifests(configs []*mcfgv1.MachineConfig, role, directory string) ([]*asse
 	return ret, nil
 }
 
-// IsManifest tests whether the specified filename is a MachineConfig manifest.
-func IsManifest(filename string) (bool, error) {
+// GenerateMachineConfigPoolFile creates manifest files containing the MachineConfigPool.
+func GenerateMachineConfigPoolFile(pool *mcfgv1.MachineConfigPool, role, directory string) (*asset.File, error) {
+	configData, err := yaml.Marshal(pool)
+	if err != nil {
+		return nil, err
+	}
+	return &asset.File{
+		Filename: filepath.Join(directory, fmt.Sprintf(machineConfigPoolFileName, pool.ObjectMeta.Name)),
+		Data:     configData,
+	}, nil
+}
+
+// IsMachineConfigManifest tests whether the specified filename is a MachineConfig manifest.
+func IsMachineConfigManifest(filename string) (bool, error) {
 	matched, err := filepath.Match(machineConfigFileNamePattern, filename)
 	if err != nil {
 		return false, err
@@ -51,7 +64,22 @@ func IsManifest(filename string) (bool, error) {
 	return matched, nil
 }
 
-// Load loads the MachineConfig manifests.
-func Load(f asset.FileFetcher, role, directory string) ([]*asset.File, error) {
+// IsMachineConfigPoolManifest tests whether the specified filename is a MachineConfigPool manifest.
+func IsMachineConfigPoolManifest(filename string) bool {
+	for _, role := range []string{PoolWorker, PoolMaster, PoolArbiter} {
+		if filename == fmt.Sprintf(machineConfigFileName, role) {
+			return true
+		}
+	}
+	return false
+}
+
+// LoadMachineConfigs loads the MachineConfig manifests.
+func LoadMachineConfigs(f asset.FileFetcher, role, directory string) ([]*asset.File, error) {
 	return f.FetchByPattern(filepath.Join(directory, machineConfigFileNamePattern))
+}
+
+// LoadMachineConfigPool loads the MachineConfig manifest.
+func LoadMachineConfigPool(f asset.FileFetcher, role, directory string) (*asset.File, error) {
+	return f.FetchByName(filepath.Join(directory, fmt.Sprintf(machineConfigFileName, role)))
 }

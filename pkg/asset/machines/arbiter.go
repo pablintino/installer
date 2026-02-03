@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -39,11 +40,12 @@ import (
 
 // Arbiter generates the machines for the `arbiter` machine pool.
 type Arbiter struct {
-	UserDataFile       *asset.File
-	MachineConfigFiles []*asset.File
-	MachineFiles       []*asset.File
-	IPClaimFiles       []*asset.File
-	IPAddrFiles        []*asset.File
+	UserDataFile          *asset.File
+	MachineConfigFiles    []*asset.File
+	MachineConfigPoolFile *asset.File
+	MachineFiles          []*asset.File
+	IPClaimFiles          []*asset.File
+	IPAddrFiles           []*asset.File
 
 	// SecretFiles is used by the baremetal platform to register the
 	// credential information for communicating with management
@@ -215,9 +217,20 @@ func (m *Arbiter) Generate(ctx context.Context, dependencies asset.Parents) erro
 		machineConfigs = append(machineConfigs, ignIPv6)
 	}
 
-	m.MachineConfigFiles, err = machineconfig.Manifests(machineConfigs, "arbiter", directory)
+	m.MachineConfigFiles, err = machineconfig.GenerateMachineConfigFiles(machineConfigs, "arbiter", directory)
 	if err != nil {
 		return fmt.Errorf("failed to create MachineConfig manifests for arbiter machines: %w", err)
+	}
+
+	// Generate the arbiter MCP
+	// For now, generate them only in case an OS Image Stream is given
+	if installConfig.Config.OSImageStream != "" {
+		arbiterMcp, err := machineconfig.GenerateMachineConfigPool(installConfig.Config, machineconfig.PoolArbiter)
+		if err != nil {
+			return errors.Wrap(err, "failed to create arbiter MCP")
+		}
+		mcpFile, err := machineconfig.GenerateMachineConfigPoolFile(arbiterMcp, "arbiter", directory)
+		m.MachineConfigPoolFile = mcpFile
 	}
 
 	m.MachineFiles = make([]*asset.File, len(machines))
@@ -270,6 +283,9 @@ func (m *Arbiter) Files() []*asset.File {
 	if m.UserDataFile != nil {
 		files = append(files, m.UserDataFile)
 	}
+	if m.MachineConfigPoolFile != nil {
+		files = append(files, m.MachineConfigPoolFile)
+	}
 	files = append(files, m.MachineConfigFiles...)
 	// Hosts refer to secrets, so place the secrets before the hosts
 	// to avoid unnecessary reconciliation errors.
@@ -296,10 +312,11 @@ func (m *Arbiter) Load(f asset.FileFetcher) (found bool, err error) {
 	}
 	m.UserDataFile = file
 
-	m.MachineConfigFiles, err = machineconfig.Load(f, "arbiter", directory)
+	m.MachineConfigFiles, err = machineconfig.LoadMachineConfigs(f, "arbiter", directory)
 	if err != nil {
 		return true, err
 	}
+	m.MachineConfigPoolFile, err = machineconfig.LoadMachineConfigPool(f, "arbiter", directory)
 
 	var fileList []*asset.File
 

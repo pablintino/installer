@@ -134,8 +134,13 @@ func validatePlatform(ctx context.Context, meta *Metadata, fldPath *field.Path, 
 }
 
 func validateAMI(ctx context.Context, meta *Metadata, config *types.InstallConfig) field.ErrorList {
+	osImageStream := config.OSImageStream
+	if osImageStream == "" {
+		osImageStream = rhcos.DefaultOSImageStream
+	}
+
 	// accept AMI from the rhcos stream metadata
-	if rhcos.AMIRegions(config.ControlPlane.Architecture, config.OSImageStream).Has(config.Platform.AWS.Region) {
+	if rhcos.AMIRegions(config.ControlPlane.Architecture, osImageStream).Has(config.Platform.AWS.Region) {
 		return nil
 	}
 

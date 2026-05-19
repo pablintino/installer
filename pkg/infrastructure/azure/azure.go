@@ -193,7 +193,12 @@ func (p *Provider) InfraReady(ctx context.Context, in clusterapi.InfraReadyInput
 	containerName := "vhd"
 	blobName := fmt.Sprintf("rhcos%s.vhd", randomString(5))
 
-	stream, err := rhcos.FetchCoreOSBuild(ctx, in.InstallConfig.Config.OSImageStream)
+	osImageStream := in.InstallConfig.Config.OSImageStream
+	if osImageStream == "" {
+		osImageStream = rhcos.DefaultOSImageStream
+	}
+
+	stream, err := rhcos.FetchCoreOSBuild(ctx, osImageStream)
 	if err != nil {
 		return fmt.Errorf("failed to get rhcos stream: %w", err)
 	}

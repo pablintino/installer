@@ -90,7 +90,12 @@ func osImage(ctx context.Context, ic *installconfig.InstallConfig, machinePool *
 	nodeArch := machinePool.Architecture
 	archName := arch.RpmArch(string(nodeArch))
 
-	st, err := rhcos.FetchCoreOSBuild(ctx, ic.Config.OSImageStream)
+	osImageStream := ic.Config.OSImageStream
+	if osImageStream == "" {
+		osImageStream = rhcos.DefaultOSImageStream
+	}
+
+	st, err := rhcos.FetchCoreOSBuild(ctx, osImageStream)
 	if err != nil {
 		return "", err
 	}
@@ -103,7 +108,7 @@ func osImage(ctx context.Context, ic *installconfig.InstallConfig, machinePool *
 	switch platform.Name() {
 	case aws.Name:
 		region := platform.AWS.Region
-		if !rhcos.AMIRegions(nodeArch, ic.Config.OSImageStream).Has(region) {
+		if !rhcos.AMIRegions(nodeArch, osImageStream).Has(region) {
 			const globalResourceRegion = "us-east-1"
 			logrus.Debugf("No AMI found in %s. Using AMI from %s.", region, globalResourceRegion)
 			region = globalResourceRegion

@@ -122,7 +122,11 @@ func ValidateForProvisioning(ic *types.InstallConfig) error {
 			}
 			defer cleanup()
 
-			err = getRhcosStream(validationCtx, ic.OSImageStream)
+			osImageStream := ic.OSImageStream
+			if osImageStream == "" {
+				osImageStream = rhcos.DefaultOSImageStream
+			}
+			err = getRhcosStream(validationCtx, osImageStream)
 			if err != nil {
 				return err
 			}

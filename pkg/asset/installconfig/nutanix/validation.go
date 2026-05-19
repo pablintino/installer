@@ -66,7 +66,11 @@ func ValidateForProvisioning(ic *types.InstallConfig) error {
 
 	// validate PreloadedOSImageName if configured
 	if p.PreloadedOSImageName != "" {
-		err = validatePreloadedImage(ctx, nc, p, ic.OSImageStream)
+		osImageStream := ic.OSImageStream
+		if osImageStream == "" {
+			osImageStream = rhcos.DefaultOSImageStream
+		}
+		err = validatePreloadedImage(ctx, nc, p, osImageStream)
 		if err != nil {
 			errList = append(errList, field.Invalid(parentPath.Child("preloadedOSImageName"), p.PreloadedOSImageName, fmt.Sprintf("fail to validate the preloaded rhcos image: %v", err)))
 		}

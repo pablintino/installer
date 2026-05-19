@@ -4,12 +4,15 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"github.com/openshift/installer/pkg/rhcos"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/openshift/installer/pkg/types"
 )
 
 func TestBaseIso(t *testing.T) {
@@ -69,7 +72,7 @@ func TestBaseIso(t *testing.T) {
 					isoBaseVersion:  ocReleaseImage,
 					baseIsoFileName: ocBaseIsoFilename,
 					baseIsoError:    tc.getIsoError,
-				})
+				}, rhcos.DefaultOSImageStream)
 			filename, err := fetcher.GetBaseISOFilename(context.Background(), "")
 
 			if tc.expectedError == "" {
@@ -88,14 +91,14 @@ type mockRelease struct {
 	baseIsoError    error
 }
 
-func (m *mockRelease) GetBaseIso(architecture string) (string, error) {
+func (m *mockRelease) GetBaseIso(architecture string, osImageStream types.OSImageStream) (string, error) {
 	if m.baseIsoError != nil {
 		return "", m.baseIsoError
 	}
 	return m.baseIsoFileName, nil
 }
 
-func (m *mockRelease) GetBaseIsoVersion(architecture string) (string, error) {
+func (m *mockRelease) GetBaseIsoVersion(architecture string, osImageStream types.OSImageStream) (string, error) {
 	return m.isoBaseVersion, nil
 }
 
